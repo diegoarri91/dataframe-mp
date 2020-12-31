@@ -4,10 +4,19 @@ import multiprocessing as mp
 import pandas as pd
 
 
+def apply(row, metadata, kwargs, apply_fun, manager_dic):
+    idx, cols = row[0], row[1]
+    cols = {key: val for key, val in cols.items() if key in apply_fun.__code__.co_varnames}
+    metadata = {key: val for key, val in metadata.items() if key in apply_fun.__code__.co_varnames}
+    kwargs = {} if kwargs is None else kwargs
+    manager_dic[idx] = apply_fun(**{**cols, **metadata, **kwargs})
+
+    
 def apply_method(idx, kwargs, apply_method, manager_dic):
     kwargs = {} if kwargs is None else kwargs
     manager_dic[idx] = apply_method(idx, **kwargs)
 
+    
 class DataFrameMP:
     
     def __init__(self, df=None, **metadata):
@@ -29,6 +38,24 @@ class DataFrameMP:
     def append(self, other, ignore_index=False):
         dfmp = self.new(self.df.append(other.df, ignore_index=ignore_index), **self.get_metadata())
         return dfmp
+    
+    def apply(self, fun, kwargs=None, columns=None, processes=1):
+        
+        manager_dic = mp.Manager().dict()
+        metadata = self.get_metadata()
+
+        with mp.Pool(processes=processes, initargs=(manager_dic,)) as pool:
+            pool.map(partial(apply, metadata=metadata, kwargs=kwargs, apply_fun=fun, manager_dic=manager_dic), zip(self.df.index, self.df.to_dict('records')))
+            pool.close()
+            pool.join()
+        
+        df = pd.DataFrame.from_dict(manager_dic, orient='index', columns=columns)
+        df = df.loc[self.df.index, :] # sort indexes
+        dfmp = self.new(df, **self.get_metadata())
+        return dfmp
+    
+    def fit(self, idx):
+        return self.df.loc[idx, 'par0'] + self.df.loc[idx, 'par1']
     
     def apply_method(self, method, kwargs=None, columns=None, processes=1):
         
