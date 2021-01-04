@@ -1,4 +1,5 @@
 from functools import partial
+from inspect import signature
 import multiprocessing as mp
 
 import pandas as pd
@@ -6,8 +7,10 @@ import pandas as pd
 
 def apply(row, metadata, kwargs, apply_fun, manager_dic):
     idx, cols = row[0], row[1]
-    cols = {key: val for key, val in cols.items() if key in apply_fun.__code__.co_varnames}
-    metadata = {key: val for key, val in metadata.items() if key in apply_fun.__code__.co_varnames}
+    pars_names = signature(apply_fun).parameters.keys()
+#     cols = {key: val for key, val in cols.items() if key in apply_fun.__code__.co_varnames}
+    cols = {key: val for key, val in cols.items() if key in pars_names}
+    metadata = {key: val for key, val in metadata.items() if key in pars_names}
     kwargs = {} if kwargs is None else kwargs
     manager_dic[idx] = apply_fun(**{**cols, **metadata, **kwargs})
 
@@ -53,9 +56,6 @@ class DataFrameMP:
         df = df.loc[self.df.index, :] # sort indexes
         dfmp = self.new(df, **self.get_metadata())
         return dfmp
-    
-    def fit(self, idx):
-        return self.df.loc[idx, 'par0'] + self.df.loc[idx, 'par1']
     
     def apply_method(self, method, kwargs=None, columns=None, processes=1):
         
